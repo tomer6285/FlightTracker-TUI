@@ -39,6 +39,22 @@ FlightTracker will launch directly inside your terminal, displaying live flights
 | `+` / `=` | Increase brightness |
 | `-` / `_` | Decrease brightness |
 | `P` | Save screenshot to `captures/` |
+| `S` | Cycle scale (`1x` -> `2x` -> `3x` -> `auto` -> `1x`) |
+| `]` / `[` | Step scale up / down |
+| `0` | Reset scale to `auto` |
+| `1` - `5` | Set scale factor directly (`1x` to `5x`) |
+
+### Scaling Options
+
+By default, FlightTracker automatically selects the largest integer scale (`1x`, `2x`, `3x`, etc.) that fits your current terminal window (`auto`).
+
+You can override the scale at startup:
+```bash
+python3 flight-tracker.py --scale 2       # Force 2x integer scale
+python3 flight-tracker.py --scale auto    # Auto-fit to terminal window
+# Or via environment variable:
+export FLIGHTTRACKER_SCALE=2
+```
 
 ---
 

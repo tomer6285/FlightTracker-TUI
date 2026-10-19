@@ -65,7 +65,9 @@ class TestTUIPanel:
 
     def test_init_matrix(self):
         panel = TUIPanel(use_alt_screen=False)
-        panel.init_matrix(width=64, height=64, brightness=80, rotation=180, colour_order="BGR")
+        panel.init_matrix(
+            width=64, height=64, brightness=80, rotation=180, colour_order="BGR"
+        )
         assert panel.width == 64
         assert panel.height == 64
         assert panel.get_brightness() == 80
@@ -178,6 +180,89 @@ class TestTUIPanel:
         res = panel.swap(canvas)
         assert res is canvas
         assert len(panel._last_rendered_str) > 0
+
+    def test_scale_setting_and_effective(self):
+        panel = TUIPanel(use_alt_screen=False, show_border=True)
+        assert panel.scale == "auto"
+        # Small terminal (80x24) -> scale 1
+        assert panel.get_effective_scale(80, 24) == 1
+        # Large terminal (140x40) -> scale 2
+        assert panel.get_effective_scale(140, 40) == 2
+        # Huge terminal (220x60) -> scale 3
+        assert panel.get_effective_scale(220, 60) == 3
+
+        # Explicit scale
+        panel.set_scale(2)
+        assert panel.scale == 2
+        assert panel.get_effective_scale(80, 24) == 2
+
+        panel.set_scale("auto")
+        assert panel.scale == "auto"
+
+        panel.set_scale("invalid")
+        assert panel.scale == "auto"
+
+    def test_scale_from_env(self):
+        with patch.dict(os.environ, {"FLIGHTTRACKER_SCALE": "3"}):
+            panel = TUIPanel(use_alt_screen=False)
+            assert panel.scale == 3
+
+    def test_cycle_and_step_scale(self):
+        panel = TUIPanel(use_alt_screen=False, show_border=True)
+        panel.set_scale(1)
+        panel.step_scale(1)
+        assert panel.scale == 2
+        panel.step_scale(-1)
+        assert panel.scale == 1
+
+        # cycle_scale with mock terminal (140x40 -> max_fit=2)
+        with patch("shutil.get_terminal_size", return_value=(140, 40)):
+            panel.set_scale(1)
+            panel.cycle_scale()
+            assert panel.scale == 2
+            panel.cycle_scale()
+            assert panel.scale == "auto"
+            panel.cycle_scale()
+            assert panel.scale == 1
+
+    def test_render_to_string_scaled(self):
+        panel = TUIPanel(use_alt_screen=False, show_border=False, scale=2)
+        panel.init_matrix(width=4, height=4, brightness=100)
+        canvas = panel.create_canvas()
+        canvas.set_pixel(0, 0, 255, 0, 0)
+        rendered = panel.render_to_string(canvas)
+        assert "▀▀" in rendered
+
+    def test_save_screenshot_scaled(self, tmp_path):
+        panel = TUIPanel(use_alt_screen=False)
+        canvas = panel.create_canvas()
+        canvas.fill(100, 150, 200)
+
+        out_file = str(tmp_path / "shot_scaled.png")
+        saved = panel.save_screenshot(canvas, path=out_file, scale=2)
+        assert os.path.exists(saved)
+        loaded = Image.open(saved)
+        assert loaded.size == (panel.width * 2, panel.height * 2)
+
+    def test_poll_input_scale_keys(self):
+        panel = TUIPanel(use_alt_screen=False)
+        panel.set_scale(1)
+
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("select.select", return_value=([True], [], [])),
+            patch("sys.stdin.read", side_effect=["s", "]", "[", "2", "0"]),
+        ):
+            panel._poll_input()
+            # s cycled from 1
+            panel._poll_input()
+            # ] stepped up
+            panel._poll_input()
+            # [ stepped down
+            panel._poll_input()
+            assert panel.scale == 2
+            panel._poll_input()
+            assert panel.scale == "auto"
 
 
 class TestPanelFactory:

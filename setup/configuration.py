@@ -92,6 +92,7 @@ DEFAULT_SCREEN_BRIGHTNESS = 3  # 1-5
 DEFAULT_SCREEN_ROTATE = False
 DEFAULT_DISPLAY_SPEED = "default"  # default / slower / faster
 DEFAULT_DISPLAY_SCAN_RATE = 16  # 1:16 or 1:32 multiplexing
+DEFAULT_TUI_SCALE = "auto"  # auto or integer 1-5
 
 # Per-theme configuration (nested dict under "theme" in config.json)
 DEFAULT_FORECAST_DURATION = "3hour"  # 3hour / 12hour / 3day
@@ -248,6 +249,7 @@ DEFAULTS: dict[str, Any] = {
     "screen_rotate": DEFAULT_SCREEN_ROTATE,
     "display_speed": DEFAULT_DISPLAY_SPEED,
     "display_scan_rate": DEFAULT_DISPLAY_SCAN_RATE,
+    "tui_scale": DEFAULT_TUI_SCALE,
     # Brightness schedule
     "screen_schedule_enabled": DEFAULT_SCREEN_SCHEDULE_ENABLED,
     "screen_schedule_auto": DEFAULT_SCREEN_SCHEDULE_AUTO,
@@ -1163,6 +1165,22 @@ class Config:
     def display_scan_rate(self) -> int:
         val = int(self.data_store.get("display_scan_rate", DEFAULT_DISPLAY_SCAN_RATE))
         return val if val in (16, 32) else DEFAULT_DISPLAY_SCAN_RATE
+
+    @property
+    def tui_scale(self) -> int | str:
+        val = self.data_store.get("tui_scale", DEFAULT_TUI_SCALE)
+        if isinstance(val, int) and val >= 1:
+            return val
+        sval = str(val).strip().lower()
+        if sval in ("auto", "0"):
+            return "auto"
+        try:
+            ival = int(sval)
+            if ival >= 1:
+                return ival
+        except (ValueError, TypeError):
+            pass
+        return DEFAULT_TUI_SCALE
 
     @property
     def display_speed_factor(self) -> float:

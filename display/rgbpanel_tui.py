@@ -147,7 +147,12 @@ def _draw_square(canvas, x0: int, y0: int, x1: int, y1: int, colour) -> None:
 class TUIPanel(RGBPanel):
     """Terminal User Interface (TUI) display driver for FlightTracker."""
 
-    def __init__(self, use_alt_screen: bool = True, show_border: bool = True):
+    def __init__(
+        self,
+        use_alt_screen: bool = True,
+        show_border: bool = True,
+        scale: int | str | None = None,
+    ):
         self._width = 64
         self._height = 32
         self._brightness = 50
@@ -155,12 +160,23 @@ class TUIPanel(RGBPanel):
         self._colour_order = "RGB"
         self._perm: tuple[int, int, int] | None = None
 
+        self._scale: int | str = "auto"
+        scale_env = os.environ.get("FLIGHTTRACKER_SCALE", os.environ.get("TUI_SCALE"))
+        if scale is not None:
+            self.set_scale(scale)
+        elif scale_env is not None:
+            self.set_scale(scale_env)
+        else:
+            self.set_scale("auto")
+
         self._use_alt_screen = use_alt_screen
         self._show_border = show_border
         self._in_alt_screen = False
         self._is_tty = sys.stdout.isatty()
 
         self._last_rendered_str = ""
+        self._last_term_size: tuple[int, int] | None = None
+        self._last_effective_scale: int | None = None
 
         # Captures directory
         self._capture_dir = os.path.join(
@@ -200,6 +216,78 @@ class TUIPanel(RGBPanel):
     def height(self) -> int:
         return self._height
 
+    @property
+    def scale(self) -> int | str:
+        return self._scale
+
+    def set_scale(self, scale: int | str) -> None:
+        """Set integer scale factor (>=1) or 'auto'."""
+        if str(scale).strip().lower() in ("auto", "0"):
+            self._scale = "auto"
+            return
+        try:
+            val = int(scale)
+            self._scale = max(1, val)
+        except (ValueError, TypeError):
+            self._scale = "auto"
+
+    def get_scale(self) -> int | str:
+        return self._scale
+
+    def get_effective_scale(
+        self, term_cols: int | None = None, term_rows: int | None = None
+    ) -> int:
+        """Return the active integer scale (>= 1)."""
+        if self._scale != "auto":
+            try:
+                return max(1, int(self._scale))
+            except (ValueError, TypeError):
+                return 1
+
+        if term_cols is None or term_rows is None:
+            term_cols, term_rows = shutil.get_terminal_size((80, 24))
+
+        border_x = 4 if self._show_border else 0
+        border_y = 4 if self._show_border else 0
+        avail_cols = max(1, term_cols - border_x)
+        avail_rows = max(1, term_rows - border_y)
+
+        scale_x = avail_cols // max(1, self._width)
+        scale_y = (avail_rows * 2) // max(1, self._height)
+        fit = min(scale_x, scale_y)
+        return max(1, fit)
+
+    def cycle_scale(self) -> int | str:
+        """Cycle through scale modes: 1x -> 2x -> ... -> max_fit -> auto -> 1x."""
+        term_cols, term_rows = shutil.get_terminal_size((80, 24))
+        border_x = 4 if self._show_border else 0
+        border_y = 4 if self._show_border else 0
+        max_fit = max(
+            1,
+            min(
+                (term_cols - border_x) // max(1, self._width),
+                ((term_rows - border_y) * 2) // max(1, self._height),
+            ),
+        )
+
+        if self._scale == "auto":
+            self.set_scale(1)
+        elif isinstance(self._scale, int):
+            if self._scale < max_fit:
+                self.set_scale(self._scale + 1)
+            else:
+                self.set_scale("auto")
+        else:
+            self.set_scale("auto")
+        return self._scale
+
+    def step_scale(self, delta: int) -> int:
+        """Step scale up or down by delta."""
+        eff = self.get_effective_scale()
+        target = max(1, eff + delta)
+        self.set_scale(target)
+        return target
+
     # -- RGBPanel interface ------------------------------------------------
 
     def init_matrix(
@@ -211,12 +299,16 @@ class TUIPanel(RGBPanel):
         hat_pwm=True,
         gpio_slowdown=1,
         colour_order="RGB",
+        scale=None,
+        **kwargs,
     ):
         self._width = int(width)
         self._height = int(height)
         self._brightness = max(0, min(100, int(brightness)))
         self._rotation = rotation
         self._colour_order = colour_order or "RGB"
+        if scale is not None:
+            self.set_scale(scale)
         try:
             self._perm = channel_permutation(self._colour_order)
         except ValueError:
@@ -305,20 +397,27 @@ class TUIPanel(RGBPanel):
     def render_to_string(self, canvas: TUICanvas) -> str:
         """Render the canvas to an ANSI TrueColor string with half-blocks."""
         term_cols, term_rows = shutil.get_terminal_size((80, 24))
+        scale = self.get_effective_scale(term_cols, term_rows)
 
-        char_rows = self._height // 2
+        char_rows = (self._height * scale + 1) // 2
         content_lines: list[str] = []
 
         for cy in range(char_rows):
-            y_top = cy * 2
-            y_bot = y_top + 1
+            vy_top = cy * 2
+            vy_bot = cy * 2 + 1
+            y_top = vy_top // scale
+            y_bot = vy_bot // scale
 
             line_parts: list[str] = []
             last_fg: tuple[int, int, int] | None = None
             last_bg: tuple[int, int, int] | None = None
 
             for x in range(self._width):
-                c_top = self._get_pixel_color(canvas, x, y_top)
+                c_top = (
+                    self._get_pixel_color(canvas, x, y_top)
+                    if y_top < self._height
+                    else (0, 0, 0)
+                )
                 c_bot = (
                     self._get_pixel_color(canvas, x, y_bot)
                     if y_bot < self._height
@@ -333,13 +432,25 @@ class TUIPanel(RGBPanel):
                     line_parts.append(f"\033[48;2;{c_bot[0]};{c_bot[1]};{c_bot[2]}m")
                     last_bg = c_bot
 
-                line_parts.append("▀")
+                line_parts.append("▀" * scale)
 
             line_parts.append("\033[0m")
             content_lines.append("".join(line_parts))
 
-        # Check if terminal is large enough for box borders and padding
-        box_width = self._width + 4  # "│ " + 64 + " │"
+        rendered_width = self._width * scale
+
+        # Header with plane icon and display info
+        scale_tag = f" @ {scale}x" + (" (auto)" if self._scale == "auto" else "")
+        title = f" ✈ FlightTracker TUI [{self._width}x{self._height}{scale_tag}] "
+
+        # Bottom status bar
+        scale_stat = f"{scale}x (auto)" if self._scale == "auto" else f"{scale}x"
+        status = f" Brightness: {self._brightness}% │ Scale: {scale_stat} [s] │ [Ctrl+C] Exit "
+        if len(status) > rendered_width and rendered_width >= 40:
+            status = f" Bri: {self._brightness}% │ Scale: {scale}x [s] │ ^C Exit "
+
+        inner_width = max(rendered_width, len(title), len(status))
+        box_width = inner_width + 4  # "│ " + content + " │"
         box_height = char_rows + 4  # top border, header, content, bottom border
 
         if self._show_border and term_cols >= box_width and term_rows >= box_height:
@@ -348,18 +459,17 @@ class TUIPanel(RGBPanel):
             pad_top_len = max(0, (term_rows - box_height) // 2)
             pad_top = "\n" * pad_top_len
 
-            # Header with plane icon and display info
-            title = f" ✈ FlightTracker TUI [{self._width}x{self._height}] "
-            dashes = max(0, self._width - len(title))
+            dashes = max(0, inner_width - len(title))
             top_border = f"{pad_left}\033[1;36m┌{title}{'─' * dashes}──┐\033[0m\n"
 
-            # Bottom status bar
-            status = f" Brightness: {self._brightness}% │ [Ctrl+C] Exit "
-            bottom_dashes = max(0, self._width - len(status))
-            bottom_border = f"{pad_left}\033[1;36m└{status}{'─' * bottom_dashes}──┘\033[0m\n"
+            bottom_dashes = max(0, inner_width - len(status))
+            bottom_border = (
+                f"{pad_left}\033[1;36m└{status}{'─' * bottom_dashes}──┘\033[0m\n"
+            )
 
+            pad_content = " " * max(0, inner_width - rendered_width)
             body_lines = [
-                f"{pad_left}\033[1;36m│\033[0m {row}\033[0m \033[1;36m│\033[0m\n"
+                f"{pad_left}\033[1;36m│\033[0m {row}{pad_content}\033[0m \033[1;36m│\033[0m\n"
                 for row in content_lines
             ]
 
@@ -372,17 +482,30 @@ class TUIPanel(RGBPanel):
 
     def swap(self, canvas: TUICanvas) -> TUICanvas:
         """Push the canvas to the terminal (VSync / show)."""
+        term_cols, term_rows = shutil.get_terminal_size((80, 24))
+        scale = self.get_effective_scale(term_cols, term_rows)
+
         frame_str = self.render_to_string(canvas)
         self._last_rendered_str = frame_str
 
         if self._is_tty:
+            need_clear = False
             if not self._in_alt_screen and self._use_alt_screen:
                 # Enter alternate screen buffer, hide cursor, clear
                 sys.stdout.write("\033[?1049h\033[?25l\033[2J")
                 self._in_alt_screen = True
+                need_clear = True
 
-            # Move cursor home and write frame
-            sys.stdout.write("\033[H" + frame_str)
+            if (
+                term_cols,
+                term_rows,
+            ) != self._last_term_size or scale != self._last_effective_scale:
+                need_clear = True
+                self._last_term_size = (term_cols, term_rows)
+                self._last_effective_scale = scale
+
+            prefix = "\033[2J\033[H" if need_clear else "\033[H"
+            sys.stdout.write(prefix + frame_str)
             sys.stdout.flush()
 
             self._poll_input()
@@ -406,10 +529,25 @@ class TUIPanel(RGBPanel):
                     self.set_brightness(self._brightness - 10)
                 elif ch in ("p", "P"):
                     self.save_screenshot()
+                elif ch in ("s", "S"):
+                    self.cycle_scale()
+                elif ch == "]":
+                    self.step_scale(1)
+                elif ch == "[":
+                    self.step_scale(-1)
+                elif ch in ("0",):
+                    self.set_scale("auto")
+                elif ch in ("1", "2", "3", "4", "5"):
+                    self.set_scale(int(ch))
         except OSError:
             pass
 
-    def save_screenshot(self, canvas: TUICanvas | None = None, path: str | None = None) -> str:
+    def save_screenshot(
+        self,
+        canvas: TUICanvas | None = None,
+        path: str | None = None,
+        scale: int | None = None,
+    ) -> str:
         """Save the current canvas as a PNG screenshot."""
         from PIL import Image
 
@@ -423,6 +561,12 @@ class TUIPanel(RGBPanel):
             for y in range(self._height):
                 for x in range(self._width):
                     img.putpixel((x, y), self._get_pixel_color(canvas, x, y))
+
+        if scale is not None and scale > 1:
+            img = img.resize(
+                (self._width * scale, self._height * scale),
+                resample=Image.Resampling.NEAREST,
+            )
 
         img.save(path)
         return path

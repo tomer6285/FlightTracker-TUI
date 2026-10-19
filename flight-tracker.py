@@ -483,11 +483,11 @@ def run_flight_tracker(disable_tests: bool = False):
         gpio_slowdown=cfg.gpio_slowdown,
         colour_order=cfg.panel_colour_order,
     )
+    if hasattr(panel, "set_scale") and os.environ.get("FLIGHTTRACKER_SCALE") is None:
+        panel.set_scale(cfg.tui_scale)
     canvas = panel.create_canvas()
     panel.clear(canvas)
-    display_type = (
-        "RGB matrix" if getattr(panel, "is_matrix", False) else "TUI display"
-    )
+    display_type = "RGB matrix" if getattr(panel, "is_matrix", False) else "TUI display"
     logger.info(
         "%s initialised (%dx%d, brightness %d%%)",
         display_type,
@@ -566,6 +566,28 @@ def _save_config_change(key: str, value) -> int:
 
 
 if __name__ == "__main__":
+    # Handle optional --scale argument for TUI display
+    scale_arg = None
+    filtered_argv = [sys.argv[0]]
+    i = 1
+    while i < len(sys.argv):
+        arg = sys.argv[i]
+        if arg == "--scale" and i + 1 < len(sys.argv):
+            scale_arg = sys.argv[i + 1]
+            i += 2
+        elif arg.startswith("--scale="):
+            scale_arg = arg.split("=", 1)[1]
+            i += 1
+        else:
+            filtered_argv.append(arg)
+            i += 1
+    sys.argv = filtered_argv
+
+    if scale_arg is not None:
+        os.environ["FLIGHTTRACKER_SCALE"] = scale_arg
+        if hasattr(panel, "set_scale"):
+            panel.set_scale(scale_arg)
+
     if "--disable-tests" in sys.argv:
         sys.argv.remove("--disable-tests")
         if len(sys.argv) == 1:

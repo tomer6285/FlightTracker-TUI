@@ -276,6 +276,40 @@ export default defineComponent({
 
       <hr class="my-3" />
 
+      <div class="mb-3">
+        <h5>Terminal (TUI) Display Scale</h5>
+        <div class="btn-group w-100" role="group" aria-label="Terminal Display Scale">
+          <input type="radio" class="btn-check" name="tui_scale" id="tui_scale_auto"
+                 value="auto" autocomplete="off"
+                 :checked="store.config.tui_scale === 'auto' || !store.config.tui_scale"
+                 @change="store.config.tui_scale = 'auto'" />
+          <label class="btn btn-outline-primary btn-sm" for="tui_scale_auto">Auto</label>
+
+          <input type="radio" class="btn-check" name="tui_scale" id="tui_scale_1"
+                 :value="1" autocomplete="off"
+                 :checked="store.config.tui_scale === 1 || store.config.tui_scale === '1'"
+                 @change="store.config.tui_scale = 1" />
+          <label class="btn btn-outline-primary btn-sm" for="tui_scale_1">1x</label>
+
+          <input type="radio" class="btn-check" name="tui_scale" id="tui_scale_2"
+                 :value="2" autocomplete="off"
+                 :checked="store.config.tui_scale === 2 || store.config.tui_scale === '2'"
+                 @change="store.config.tui_scale = 2" />
+          <label class="btn btn-outline-primary btn-sm" for="tui_scale_2">2x</label>
+
+          <input type="radio" class="btn-check" name="tui_scale" id="tui_scale_3"
+                 :value="3" autocomplete="off"
+                 :checked="store.config.tui_scale === 3 || store.config.tui_scale === '3'"
+                 @change="store.config.tui_scale = 3" />
+          <label class="btn btn-outline-primary btn-sm" for="tui_scale_3">3x</label>
+        </div>
+        <div class="form-text text-muted small">
+          Integer pixel scaling factor for terminal output. Auto automatically fits your terminal. Press <kbd>s</kbd> at runtime to cycle scale.
+        </div>
+      </div>
+
+      <hr class="my-3" />
+
       <div class="mb-2 form-check">
         <input type="checkbox" class="form-check-input" name="screen_rotate" id="screen_rotate"
             v-model="store.config.screen_rotate" />

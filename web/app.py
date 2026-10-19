@@ -616,6 +616,11 @@ def parse_settings_form(form, cfg) -> dict:
         "display_scan_rate": (
             32 if str_val(form.get("display_scan_rate"), "").lower() == "32" else 16
         ),
+        "tui_scale": (
+            "auto"
+            if str_val(form.get("tui_scale"), "auto").strip().lower() in ("auto", "0")
+            else max(1, min(10, int_val(form.get("tui_scale"), 1)))
+        ),
         # Brightness schedule
         "screen_schedule_enabled": bool_val(form.get("screen_schedule_enabled")),
         "screen_schedule_auto": bool_val(form.get("screen_schedule_auto")),

@@ -44,6 +44,10 @@ python3 flight-tracker.py
 | `+` / `=` | Increase brightness |
 | `-` / `_` | Decrease brightness |
 | `P` | Save screenshot PNG to `captures/` |
+| `S` | Cycle integer scale (`1x` -> `2x` -> `3x` -> `auto` -> `1x`) |
+| `]` / `[` | Step scale factor up / down |
+| `0` | Reset scale factor to `auto` |
+| `1` - `5` | Set scale factor directly (`1x` - `5x`) |
 
 ---
 
