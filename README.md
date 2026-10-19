@@ -1,81 +1,63 @@
-# Raspberry Pi Flight Tracker (v2) [![Tests and formatting](https://github.com/ColinWaddell/FlightTracker/actions/workflows/lint.yml/badge.svg)](https://github.com/ColinWaddell/FlightTracker/actions/workflows/lint.yml)
+# FlightTracker TUI [![Tests and formatting](https://github.com/tomer6285/FlightTracker-TUI/actions/workflows/lint.yml/badge.svg)](https://github.com/tomer6285/FlightTracker-TUI/actions/workflows/lint.yml)
 
-[![Finished flight tracker showing a flight](https://blog.colinwaddell.com/user/pages/01.articles/02.flight-tracker/screen-flight-thumb.jpg)](https://blog.colinwaddell.com/user/pages/01.articles/02.flight-tracker/screen-flight-thumb.jpg)
+A Terminal User Interface (TUI) flight tracker that shows you what aircraft are overhead directly inside your terminal. It quietly answers the important question: **"What's that plane?"**
 
-A Raspberry Pi-powered RGB LED matrix that shows you what aircraft are overhead. It sits on your fridge, or a shelf, or wherever you decide to put it, and quietly answers the important question: **"What's that plane?"**
+FlightTracker TUI takes live aircraft data, works out what is nearby, and displays it in your terminal using ANSI TrueColor 24-bit half-blocks. When there's nothing overhead, it shows the time, weather, temperature, rainfall, or satellite passes.
 
-FlightTracker takes live aircraft data, works out what is nearby, and displays it on a 64x32 RGB LED matrix. When there's nothing overhead, it shows the time, weather, temperature, rainfall, or satellite passes.
-
-For much more detailed documentation, visit [flight-tracker.dev](https://flight-tracker.dev).
-
- - [Hardware: Build your own](https://flight-tracker.dev/build/)
- - [Software: Install and configure](https://flight-tracker.dev/install/)
-
----
-
-## Support Me
-
-I've been working on this project for 5 years now, nearly every day, helping users and adding new features. If you'd like to show your support visit [ko-fi.com/flighttracker](https://ko-fi.com/flighttracker)
+ - **Terminal Native**: Runs on Linux, macOS, and Windows terminals with ANSI TrueColor support. No LED matrix hardware or GUI/pygame dependencies required.
+ - **Live Flight Tracking**: Displays callsign, aircraft type, origin and destination airports, altitude, speed, heading, and distance.
+ - **Multi-Provider Support**: Supports FlightRadar24, OpenSky Network, and local ADS-B receivers (tar1090/dump1090).
+ - **Web Configuration**: Built-in web UI for configuring location, search radius, flight providers, and display preferences.
+ - **Hardware & Simulator Fallbacks**: LED matrix drivers (Pi 3/4/5) and pygame desktop simulator are still supported via `FLIGHTTRACKER_PANEL`.
 
 ---
-
-## v1 to v2
-
-Recently (June 2026) this codebase has had a major rewrite. There are detailed guides on the update procedure but it's worth pointing out the change in branching:
-
- - `main` is the new home for FlightTracker `v2`
- - `master` is the resting place of FlightTracker `v1`
-
-## FlightTracker OS
-
-FlightTracker OS is available as a 32 bit or 64 bit Raspberry Pi image with a browser-based installer for setting up your Flight Tracker.
-
-[Find out more about FlightTracker OS →](https://flight-tracker.dev/os/)
 
 ## Installation
 
-### Quick install
-
-Run this over SSH on a fresh Raspberry Pi OS (Lite) install and the script will detect your Pi model and run the appropriate installer:
+### Quick start (TUI)
 
 ```bash
-curl -sSL https://flight-tracker.dev/install.sh | bash
+git clone https://github.com/tomer6285/FlightTracker-TUI.git
+cd FlightTracker-TUI
+python3 -m venv env
+source env/bin/activate
+pip install -r platforms/tui/requirements.txt
+python3 flight-tracker.py
 ```
 
-The installer detects your hardware, clones the repo, sets up the Python environment, and configures a systemd service so FlightTracker starts on boot.
-
-### Step-by-step install
-
-If you'd rather do it manually - or you want to understand what the script does - follow the guide for your platform:
+### Platform guides
 
 | Platform | Guide |
 |----------|-------|
-| Raspberry Pi 3 / 4 / Zero | [platforms/pi/INSTALL.md](platforms/pi/INSTALL.md) |
-| Raspberry Pi 5 | [platforms/pi5/INSTALL.md](platforms/pi5/INSTALL.md) |
-| Desktop simulator | [platforms/simulator/INSTALL.md](platforms/simulator/INSTALL.md) |
+| Terminal User Interface (TUI) | [platforms/tui/INSTALL.md](platforms/tui/INSTALL.md) |
+| Raspberry Pi 3 / 4 / Zero (RGB Matrix) | [platforms/pi/INSTALL.md](platforms/pi/INSTALL.md) |
+| Raspberry Pi 5 (RGB Matrix) | [platforms/pi5/INSTALL.md](platforms/pi5/INSTALL.md) |
+| Desktop simulator (pygame window) | [platforms/simulator/INSTALL.md](platforms/simulator/INSTALL.md) |
 
-## 3D Printed Case
+---
 
-There's an official 3D-printable case for FlightTracker, designed for the 64×32 HUB75 RGB LED matrix (4mm pitch). It's a two-piece interlocking design that works with any Raspberry Pi model and prints on a normal-sized bed with minimal supports.
+## Terminal Controls
 
-- Ready-to-print files on [Printables](https://www.printables.com/model/1820229-flight-tracker-screen-for-raspberry-pi-any-model-6)
-- OpenSCAD source and assembly instructions on [GitHub](https://github.com/ColinWaddell/FlightTracker-Case)
+| Key | Action |
+|-----|--------|
+| `Ctrl+C` or `Q` | Exit application cleanly |
+| `+` / `=` | Increase brightness |
+| `-` / `_` | Decrease brightness |
+| `P` | Save screenshot PNG to `captures/` |
 
-![FlightTracker in the 3D printed case](assets/flight-tracker-case.jpg)
+---
+
+## Web Configuration
+
+On startup, FlightTracker launches the built-in web configuration server at `http://localhost:8584/settings` (or the IP displayed on start). You can configure your home coordinates, search radius, flight providers, units, and themes via the browser.
 
 ---
 
 ## Optional features
 
-### Loading LED
-
-An LED wired to a GPIO pin can blink while flight data is loading. Enable it in the web UI under Hardware settings, and set the GPIO pin number to match your wiring.
-
 ### Rainfall chart
 
 If you have a WeatherAPI key configured, you can display a 24-hour rainfall chart alongside the temperature. Set the weather mode to "temperature + rainfall" in the web UI.
-
-[![Example Weather Chart](https://raw.githubusercontent.com/ColinWaddell/FlightTracker/refs/heads/main/assets/weather.jpg)](https://raw.githubusercontent.com/ColinWaddell/FlightTracker/refs/heads/main/assets/weather.jpg)
 
 ### Using a local ADS-B receiver (tar1090)
 
@@ -84,7 +66,7 @@ By default the tracker pulls flight data from FlightRadar24. If you run your own
 #### What you need
 
 - A device running dump1090-fa, readsb, or similar, with tar1090 installed
-- The device must be reachable on your local network from the Flight Tracker Pi
+- The device must be reachable on your local network from the Flight Tracker machine
 - tar1090-db enrichment active (the default in most installations) - it provides the aircraft type descriptions used by this software
 
 #### Finding your aircraft.json URL
@@ -104,13 +86,6 @@ The response should be a JSON object with an `"aircraft"` array.
 
 Once you have the URL, open the web UI and go to **Providers** → **Provider Settings** → **tar1090**, enter the URL, then enable tar1090 (and order it ahead of FlightRadar24 if you want the local receiver to win) under **Providers** → **Lookup Priority**.
 
-#### Differences from FlightRadar24 mode
-
-- Aircraft type (e.g. "Airbus A-320") is sourced directly from the tar1090 aircraft database
-- Origin and destination airport codes are looked up via [adsbdb.com](https://api.adsbdb.com)
-- All position and altitude data comes from your receiver in real time
-- No rate limiting or API key required
-
 ### Using OpenSky Network as your data source
 
 [OpenSky Network](https://opensky-network.org) is a free, community-driven ADS-B network that can be used instead of (or ahead of) FlightRadar24 as the flight data source. No subscription is required - a free registered account gives you enough API credits for 30-second polling.
@@ -127,25 +102,16 @@ Once you have the URL, open the web UI and go to **Providers** → **Provider Se
 3. Enable OpenSky (and order it ahead of FlightRadar24) under **Providers** → **Lookup Priority**
 4. Save - the tracker will restart and begin fetching from OpenSky
 
-#### Differences from FlightRadar24 mode
-
-- Uses OAuth2 credentials (Client ID + Client Secret) rather than a third-party library
-- Aircraft type and route origin/destination are both looked up via [adsbdb.com](https://api.adsbdb.com), the same service used in tar1090 mode
-- If your credentials are invalid the provider is quarantined for an hour and the tracker falls back to any other enabled flight provider
-- Data refreshes every 30 seconds
-
 ---
 ## Satellite Tracking
 
-To see when a particular satellite is over head enter its [NORAD ID](https://celestrak.org/SATCAT/search.php) in the device config and it'll let you know where to look, its altitude and speed.
+To see when a particular satellite is overhead enter its [NORAD ID](https://celestrak.org/SATCAT/search.php) in the device config and it will show its trajectory, altitude, and speed.
 
 ## Running the tracker from the command line
 
 The main entrypoint is the script at the repo root:
 
 ```bash
-cd /home/pi/FlightTracker
-source env/bin/activate
 python3 flight-tracker.py help
 ```
 
@@ -156,6 +122,7 @@ Usage: python flight-tracker.py [command]
 Commands:
   config                 Dump current configuration as JSON
   data                   Print the platform data directory path
+  screen-test            Cycle each colour through 100/66/33% brightness (2s each)
   reset password         Clear web_password_hash in the config
   reset settings         Delete the config.json file
   cache clear            Wipe all on-disk cache files (routes and TLE)
@@ -174,78 +141,6 @@ Test commands accept `--parameters` and `--interval`/`--limit` for repeated runs
 For normal operation, start the tracker with `python3 flight-tracker.py` and use the configuration file or the web settings UI to control its behaviour.
 
 ---
-
-## Updating to the most recent version
-
-If your checkout is still on the old `master` branch, switch to `main` before pulling updates:
-
-```bash
-cd /home/pi/FlightTracker
-git fetch --all
-git checkout main
-git pull
-source env/bin/activate
-pip install -r platforms/pi/requirements.txt
-sudo systemctl restart FlightTracker.service
-```
-
----
-
-## Troubleshooting
-
-- **The installation went well, you selected Convenience Mode (no soldering) and can't see anything:**
-   Head into the settings interface and go into the `Hardware` section and select Convenience Mode
-   for a second time, then hit save.
-
-- **Only the top half of the screen is lit up:**
-  Check the panel you've bought to see if it says `32S` (1:32 scan rate) anywhere on it. These aren't supported by this code
-  yet but it should be an easy fix - [more details here](https://github.com/ColinWaddell/FlightTracker/issues/73). If you get it working
-  let me know in the ticket as I want to add this to the settings page.
-
-- **Everything looks red**:
-  Your power supply isn't supplying enough power to the screen.
-
-- **I changed a setting now the deice wont start:**
-  Reset your settings by deleting your config and rebooting
-
-```bash
-# Before v2.3.0
-rm ~/.local/share/FlightTracker/config.json
-sudo reboot
-
-# After v2.3.0
-cd ~/FlightTracker
-source env/bin/active
-python flight-tracker.py reset settings
-```
-
-- **Everything is broken and it wont boot:**
-  [Raise a ticket](https://github.com/ColinWaddell/FlightTracker/issues/new?template=bug_report.yml) and tell me what you can see. The most useful info comes from trying to run it manually like this:
-
-```bash
-# Disable the service
-sudo systemctl stop FlightTracker.service
-
-# Get ready to run the code
-cd ~/FlightTracker
-source env/bin/activate
-
-# Copy the output of this into a ticket
-python flight-tracker.py
-
-# Include this in the ticket
-# Please remove any confidential information before posting (specifically: API keys)
-python flight-tracker.py config
-
-# If you want to resart the service
-sudo systemctl start FlightTracker.service
-```
-
-- **Only half my screen is lit up:**
-  Head into `Setting -> Hardware` and select `1:32` as your scan-rate.
-
----
-
 
 ## Settings reference
 
@@ -291,7 +186,7 @@ This table is for reference if you've disabled the web interface (`web_interface
 | `hat_pwm_enabled` | Enable PWM via Pi audio hardware (requires a solder bridge) | `true` |
 | `loading_indicator` | Loading indicator mode: `"none"`, `"pixel"` (on-screen blink), or `"gpio"` (external LED) | `"pixel"` |
 | `loading_led_gpio_pin` | GPIO pin number for the loading LED (only used when `loading_indicator` is `"gpio"`) | `""` |
-| `flight_providers` | Ordered flight-provider list: `[{"provider": "fr24", "enabled": true}, ...]` | `[{"provider": "fr24", "enabled": true}]` |
+| `flight_providers` | Ordered flight-provider list: `[{"provider": "fr24", "enabled": true}, ...]` | `[{"provider": "fr24", "enabled": true}]` |\
 | `route_providers` | Ordered route-provider list (aerodatabox, hexdb, adsbdb, fr24) | see defaults |
 | `providers` | Per-provider settings keyed by provider id (e.g. `providers.tar1090.url`) | `{}` |
 | `max_flight_lookup` | Number of nearby flights to track at once | `5` |
@@ -309,20 +204,16 @@ This table is for reference if you've disabled the web interface (`web_interface
 
 ## Contributing
 
-If you'd like to contribute to FlightTracker - whether it's a bug report, feature idea, or pull request - please read the [contributing guide](CONTRIBUTORS.md).
+If you'd like to contribute to FlightTracker TUI - whether it's a bug report, feature idea, or pull request - please read [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
 ## Acknowledgements
 
-FlightTracker builds on the work of several open-source projects and contributors:
-
-- **Display drivers** - thanks to Henner Zeller for the [rpi-rgb-led-matrix](https://github.com/hzeller/rpi-rgb-led-matrix) C++ library and Python bindings (used on Pi 3/4/Zero), and to Adafruit for the [adafruit_blinka_raspberry_pi5_piomatter](https://github.com/adafruit/Adafruit_Blinka_Raspberry_Pi5_Piomatter) driver (used on Pi 5).
-- **[plane-tracker-rgb-pi](https://github.com/c0wsaysmoo/plane-tracker-rgb-pi)** - thanks to c0wsaysmoo for letting me copy some of their great work.
-- **[FlightRadarAPI](https://pypi.org/project/FlightRadarAPI/)** - thanks to JeanExtreme002 for the FlightRadar24 API library.
+FlightTracker TUI is forked from the [FlightTracker project by Colin Waddell](https://github.com/ColinWaddell/FlightTracker).
 
 ---
 
 ## License
 
-Flight Tracker is released under the GNU General Public License v3.0. You're welcome to use, modify, and share the code - just keep it under the same license and include proper attribution (retain the copyright and license notice). See [LICENSE.md](LICENSE.md) for details.
+FlightTracker TUI is released under the GNU General Public License v3.0. See [LICENSE.md](LICENSE.md) for details.

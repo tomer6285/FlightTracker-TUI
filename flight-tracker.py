@@ -348,9 +348,8 @@ def _warn_if_root() -> None:
     """Print a root-related advisory to stderr.
 
     If the process is running as root, warn that this is not recommended
-    for security reasons.  If not running as root, note that the RGB
-    matrix driver may still print a root-related message to stderr and
-    that it can be safely ignored.
+    for security reasons.  If not running as root and an RGB matrix driver
+    is in use, note that it may still print a root-related message to stderr.
 
     On platforms where ``os.geteuid`` is unavailable (e.g. Windows) the
     check is skipped and the application continues to load as expected.
@@ -367,7 +366,7 @@ def _warn_if_root() -> None:
             "for security reasons.",
             file=sys.stderr,
         )
-    else:
+    elif getattr(panel, "is_matrix", False):
         print(
             "[startup] Note: the RGB matrix driver may print a message about "
             "running as root - this is safe to ignore providing you gave python "
@@ -381,17 +380,17 @@ def apply_pending_config_update() -> None:
 
     The web import flow writes ``config-update.json`` and reboots.  This
     function runs at the very start of boot - before logging or
-    ``Config.instance()`` - to atomically swap it into ``config.json``,
+    ``Config.instance()`` - to atomically swap it into ``config.json``,\
     preserving the previous config as ``config-backup.json``.
 
     A ``.import-in-progress`` marker records that a swap has happened.  If
     the process crashes before :func:`cleanup_successful_import` removes
-    it, the next boot sees the marker still present, restores the backup,
+    it, the next boot sees the marker still present, restores the backup,\
     and writes a ``.import-failed`` marker so the web UI can notify the
     user.
 
     This logic lives only in the boot path - CLI commands and other entry
-    points are unaffected.
+    points are unaffected.\
     """
     update_path = PLATFORM_DATA_DIR / "config-update.json"
     backup_path = PLATFORM_DATA_DIR / "config-backup.json"
@@ -429,7 +428,7 @@ def apply_pending_config_update() -> None:
     if not update_path.exists():
         return
 
-    # Fresh import: swap config.json -> config-backup.json,
+    # Fresh import: swap config.json -> config-backup.json,\
     # config-update.json -> config.json, write marker.
     try:
         if CONFIG_PATH.exists():
@@ -452,7 +451,7 @@ def cleanup_successful_import() -> None:
 
     Called once ``app_ready.set()`` fires, meaning the app booted without
     crashing.  The imported config is now confirmed good, so the backup is
-    no longer needed.
+    no longer needed.\
     """
     backup_path = PLATFORM_DATA_DIR / "config-backup.json"
     in_progress = PLATFORM_DATA_DIR / ".import-in-progress"
@@ -474,7 +473,7 @@ def run_flight_tracker(disable_tests: bool = False):
     cfg = Config.instance()
     logger.info("FlightTracker starting (log level: %s)", cfg.log_level)
 
-    # Initialise matrix once with full config values
+    # Initialise matrix/TUI display once with full config values
     panel.init_matrix(
         width=64,
         height=64 if cfg.display_scan_rate == 32 else 32,
@@ -486,8 +485,14 @@ def run_flight_tracker(disable_tests: bool = False):
     )
     canvas = panel.create_canvas()
     panel.clear(canvas)
+    display_type = (
+        "RGB matrix" if getattr(panel, "is_matrix", False) else "TUI display"
+    )
     logger.info(
-        "RGB matrix initialised (64x32, brightness %d%%)",
+        "%s initialised (%dx%d, brightness %d%%)",
+        display_type,
+        64,
+        64 if cfg.display_scan_rate == 32 else 32,
         cfg.brightness_percent,
     )
 

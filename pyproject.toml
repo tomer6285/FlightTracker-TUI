@@ -1,21 +1,22 @@
 [project]
-name = "flighttracker"
+name = "flighttracker-tui"
 version = "2.0.7"
-description = "Real-time flight tracker display for Raspberry Pi with RGB LED panels"
+description = "Real-time flight tracker TUI (Terminal User Interface) display"
 readme = "README.md"
 license = "GPL-3.0-only"
 authors = [{ name = "Colin Waddell", email = "contact@colinwaddell.com" }]
 requires-python = ">=3.9"
-keywords = ["flight-tracker", "flightradar24", "ads-b", "led-panel", "raspberry-pi"]
+keywords = ["flight-tracker", "flightradar24", "ads-b", "tui", "terminal", "text-user-interface"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Environment :: Raspberry Pi",
+    "Environment :: Console",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Terminals",
     "Topic :: System :: Hardware",
 ]
 
@@ -23,13 +24,17 @@ dependencies = [
     "beautifulsoup4>=4.13.0",
     "Flask>=3.0.0",
     "FlightRadarAPI>=1.5.1",
+    "pillow>=10.0.0",
     "qrcode[pil]>=7.4.2",
     "requests>=2.32.0",
-    "rich>=15.0.0",
+    "rich>=13.0.0",
     "sgp4>=2.22",
 ]
 
 [project.optional-dependencies]
+tui = [
+    "pillow>=10.0.0",
+]
 pi = [
     "RPi.GPIO==0.7.1",
     "rgbmatrix",
@@ -49,10 +54,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/ColinWaddell/FlightTracker"
-Repository = "https://github.com/ColinWaddell/FlightTracker"
-Issues = "https://github.com/ColinWaddell/FlightTracker/issues"
-Changelog = "https://github.com/ColinWaddell/FlightTracker/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/tomer6285/FlightTracker-TUI"
+Repository = "https://github.com/tomer6285/FlightTracker-TUI"
+Issues = "https://github.com/tomer6285/FlightTracker-TUI/issues"
 
 [tool.setuptools.packages.find]
 include = ["setup*", "display*", "utilities*", "scenes*", "web*", "platforms*"]
