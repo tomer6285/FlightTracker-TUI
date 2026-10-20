@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import os
+import re
 from unittest.mock import patch
 
+import pytest
 from PIL import Image
 
 from display.panel_factory import get_panel, reset_panel
@@ -118,7 +121,7 @@ class TestTUIPanel:
 
     def test_render_to_string_halfblocks(self):
         panel = TUIPanel(use_alt_screen=False, show_border=False)
-        panel.init_matrix(width=4, height=4, brightness=100)
+        panel.init_matrix(width=4, height=4, brightness=100, scale=1)
         canvas = panel.create_canvas()
         canvas.set_pixel(0, 0, 255, 0, 0)  # Top pixel: red
         canvas.set_pixel(0, 1, 0, 0, 255)  # Bottom pixel: blue
@@ -184,12 +187,10 @@ class TestTUIPanel:
     def test_scale_setting_and_effective(self):
         panel = TUIPanel(use_alt_screen=False, show_border=True)
         assert panel.scale == "auto"
-        # Small terminal (80x24) -> scale 1
-        assert panel.get_effective_scale(80, 24) == 1
-        # Large terminal (140x40) -> scale 2
-        assert panel.get_effective_scale(140, 40) == 2
-        # Huge terminal (220x60) -> scale 3
-        assert panel.get_effective_scale(220, 60) == 3
+        # Auto uses fractional scaling between integer thresholds.
+        assert panel.get_effective_scale(80, 24) == pytest.approx(76 / 64)
+        assert panel.get_effective_scale(140, 40) == pytest.approx(136 / 64)
+        assert panel.get_effective_scale(220, 60) == pytest.approx(216 / 64)
 
         # Explicit scale
         panel.set_scale(2)
@@ -201,6 +202,81 @@ class TestTUIPanel:
 
         panel.set_scale("invalid")
         assert panel.scale == "auto"
+
+    @pytest.mark.parametrize(
+        "term_size, border, expected",
+        [
+            ((80, 24), True, (76, 19)),
+            ((100, 30), True, (96, 24)),
+            ((110, 35), True, (106, 26)),
+            ((180, 25), True, (92, 23)),
+            ((70, 60), True, (66, 16)),
+            ((50, 15), True, (46, 11)),
+            ((30, 8), True, (30, 7)),
+            ((1, 1), True, (1, 1)),
+            ((80, 24), False, (80, 20)),
+        ],
+    )
+    def test_auto_frame_fits_terminal(self, term_size, border, expected):
+        panel = TUIPanel(use_alt_screen=False, show_border=border, scale="auto")
+        canvas = panel.create_canvas()
+        frame = panel.render_to_string(canvas, term_size=term_size)
+        lines = re.sub(r"\x1b\[[0-9;]*m", "", frame).split("\n")
+        pixel_lines = [line for line in lines if "▀" in line]
+        assert (pixel_lines[0].count("▀"), len(pixel_lines)) == expected
+        assert max(map(len, lines)) <= term_size[0]
+        assert len(lines) <= term_size[1]
+        assert not frame.endswith("\n")
+        # Rounding to whole half-block cells may lose less than two pixel rows.
+        width, rows = expected
+        assert abs(rows * 2 - width / 2) <= 2
+
+    def test_fractional_resampling_preserves_colours(self):
+        panel = TUIPanel(use_alt_screen=False, show_border=False, scale="auto")
+        panel.init_matrix(width=2, height=2, brightness=100)
+        canvas = panel.create_canvas()
+        canvas.set_pixel(0, 0, 255, 0, 0)
+        canvas.set_pixel(1, 0, 0, 255, 0)
+        canvas.set_pixel(0, 1, 0, 0, 255)
+        canvas.set_pixel(1, 1, 255, 255, 255)
+        frame = panel.render_to_string(canvas, term_size=(3, 2))
+        assert "\033[38;2;255;0;0m" in frame
+        assert "\033[38;2;0;255;0m" in frame
+        assert "\033[48;2;0;0;255m" in frame
+        assert "\033[48;2;255;255;255m" in frame
+        assert frame.count("▀") == 3
+
+    def test_resize_redraws_and_clears_previous_frame(self):
+        panel = TUIPanel(use_alt_screen=False, show_border=False, scale="auto")
+        panel._is_tty = True
+        output = io.StringIO()
+        with (
+            patch.object(
+                panel, "_terminal_size", side_effect=[(80, 24), (100, 30), (30, 8)]
+            ),
+            patch.object(panel, "_poll_input"),
+            patch("sys.stdout", output),
+        ):
+            for width in (80, 100, 30):
+                output.seek(0)
+                output.truncate()
+                panel.swap(panel.create_canvas())
+                assert output.getvalue().startswith("\033[2J\033[H")
+                assert panel._last_rendered_str.split("\n")[-1].count("▀") == width
+
+    def test_live_terminal_size_ignores_stale_environment(self):
+        with (
+            patch.dict(os.environ, {"COLUMNS": "80", "LINES": "24"}),
+            patch("os.get_terminal_size", return_value=os.terminal_size((110, 35))),
+            patch("sys.stdout.fileno", return_value=1),
+        ):
+            assert TUIPanel._terminal_size() == (110, 35)
+
+    def test_step_from_fractional_auto_uses_integer_scale(self):
+        panel = TUIPanel(use_alt_screen=False, scale="auto")
+        with patch.object(panel, "_terminal_size", return_value=(100, 30)):
+            assert panel.step_scale(1) == 2
+            assert panel.scale == 2
 
     def test_scale_from_env(self):
         with patch.dict(os.environ, {"FLIGHTTRACKER_SCALE": "3"}):

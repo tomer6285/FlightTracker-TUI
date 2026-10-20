@@ -176,7 +176,7 @@ class TUIPanel(RGBPanel):
 
         self._last_rendered_str = ""
         self._last_term_size: tuple[int, int] | None = None
-        self._last_effective_scale: int | None = None
+        self._last_effective_scale: float | None = None
 
         # Captures directory
         self._capture_dir = os.path.join(
@@ -234,39 +234,51 @@ class TUIPanel(RGBPanel):
     def get_scale(self) -> int | str:
         return self._scale
 
+    @staticmethod
+    def _terminal_size() -> tuple[int, int]:
+        """Read the live output TTY, ignoring stale COLUMNS/LINES overrides."""
+        try:
+            return os.get_terminal_size(sys.stdout.fileno())
+        except (OSError, ValueError, AttributeError):
+            return shutil.get_terminal_size((80, 24))
+
+    def _has_border(self, term_cols: int, term_rows: int) -> bool:
+        return self._show_border and term_cols >= 44 and term_rows >= 3
+
     def get_effective_scale(
         self, term_cols: int | None = None, term_rows: int | None = None
-    ) -> int:
-        """Return the active integer scale (>= 1)."""
+    ) -> float:
+        """Return the fractional aspect-fit scale, or the manual integer scale."""
         if self._scale != "auto":
-            try:
-                return max(1, int(self._scale))
-            except (ValueError, TypeError):
-                return 1
+            return int(self._scale)
 
         if term_cols is None or term_rows is None:
-            term_cols, term_rows = shutil.get_terminal_size((80, 24))
+            term_cols, term_rows = self._terminal_size()
 
-        border_x = 4 if self._show_border else 0
-        border_y = 4 if self._show_border else 0
-        avail_cols = max(1, term_cols - border_x)
-        avail_rows = max(1, term_rows - border_y)
+        border = self._has_border(term_cols, term_rows)
+        avail_cols = max(1, term_cols - (4 if border else 0))
+        avail_rows = max(1, term_rows - (2 if border else 0))
+        return min(avail_cols / self._width, avail_rows * 2 / self._height)
 
-        scale_x = avail_cols // max(1, self._width)
-        scale_y = (avail_rows * 2) // max(1, self._height)
-        fit = min(scale_x, scale_y)
-        return max(1, fit)
+    def _render_dimensions(self, term_cols: int, term_rows: int) -> tuple[int, int]:
+        scale = self.get_effective_scale(term_cols, term_rows)
+        rendered_width = max(1, int(self._width * scale))
+        if self._scale == "auto":
+            # Half-blocks require pairs of vertical pixels. Round down to fit.
+            char_rows = max(1, int(self._height * scale / 2))
+        else:
+            char_rows = (self._height * int(scale) + 1) // 2
+        return rendered_width, char_rows
 
     def cycle_scale(self) -> int | str:
         """Cycle through scale modes: 1x -> 2x -> ... -> max_fit -> auto -> 1x."""
-        term_cols, term_rows = shutil.get_terminal_size((80, 24))
-        border_x = 4 if self._show_border else 0
-        border_y = 4 if self._show_border else 0
+        term_cols, term_rows = self._terminal_size()
+        border = self._has_border(term_cols, term_rows)
         max_fit = max(
             1,
             min(
-                (term_cols - border_x) // max(1, self._width),
-                ((term_rows - border_y) * 2) // max(1, self._height),
+                (term_cols - (4 if border else 0)) // self._width,
+                ((term_rows - (2 if border else 0)) * 2) // self._height,
             ),
         )
 
@@ -284,7 +296,7 @@ class TUIPanel(RGBPanel):
     def step_scale(self, delta: int) -> int:
         """Step scale up or down by delta."""
         eff = self.get_effective_scale()
-        target = max(1, eff + delta)
+        target = max(1, int(eff) + delta)
         self.set_scale(target)
         return target
 
@@ -394,98 +406,91 @@ class TUIPanel(RGBPanel):
 
         return p
 
-    def render_to_string(self, canvas: TUICanvas) -> str:
-        """Render the canvas to an ANSI TrueColor string with half-blocks."""
-        term_cols, term_rows = shutil.get_terminal_size((80, 24))
+    def render_to_string(
+        self, canvas: TUICanvas, *, term_size: tuple[int, int] | None = None
+    ) -> str:
+        """Render an aspect-fit, nearest-neighbor image using TrueColor half-blocks."""
+        term_cols, term_rows = term_size or self._terminal_size()
         scale = self.get_effective_scale(term_cols, term_rows)
+        rendered_width, char_rows = self._render_dimensions(term_cols, term_rows)
+        pixel_height = char_rows * 2
+        x_map = [
+            min(self._width - 1, int((x + 0.5) * self._width / rendered_width))
+            for x in range(rendered_width)
+        ]
+        if self._scale == "auto":
+            y_map = [
+                min(self._height - 1, int((y + 0.5) * self._height / pixel_height))
+                for y in range(pixel_height)
+            ]
+        else:
+            y_map = [y // int(scale) for y in range(pixel_height)]
 
-        char_rows = (self._height * scale + 1) // 2
         content_lines: list[str] = []
-
         for cy in range(char_rows):
-            vy_top = cy * 2
-            vy_bot = cy * 2 + 1
-            y_top = vy_top // scale
-            y_bot = vy_bot // scale
-
+            y_top, y_bot = y_map[cy * 2 : cy * 2 + 2]
             line_parts: list[str] = []
             last_fg: tuple[int, int, int] | None = None
             last_bg: tuple[int, int, int] | None = None
-
-            for x in range(self._width):
-                c_top = (
-                    self._get_pixel_color(canvas, x, y_top)
-                    if y_top < self._height
-                    else (0, 0, 0)
-                )
-                c_bot = (
-                    self._get_pixel_color(canvas, x, y_bot)
-                    if y_bot < self._height
-                    else (0, 0, 0)
-                )
-
+            for x in x_map:
+                c_top = self._get_pixel_color(canvas, x, y_top)
+                c_bot = self._get_pixel_color(canvas, x, y_bot)
                 if c_top != last_fg:
                     line_parts.append(f"\033[38;2;{c_top[0]};{c_top[1]};{c_top[2]}m")
                     last_fg = c_top
-
                 if c_bot != last_bg:
                     line_parts.append(f"\033[48;2;{c_bot[0]};{c_bot[1]};{c_bot[2]}m")
                     last_bg = c_bot
-
-                line_parts.append("▀" * scale)
-
+                line_parts.append("▀")
             line_parts.append("\033[0m")
             content_lines.append("".join(line_parts))
 
-        rendered_width = self._width * scale
+        bordered = (
+            self._has_border(term_cols, term_rows)
+            and rendered_width + 4 <= term_cols
+            and char_rows + 2 <= term_rows
+        )
+        box_width = rendered_width + (4 if bordered else 0)
+        box_height = char_rows + (2 if bordered else 0)
+        pad_left = " " * max(0, (term_cols - box_width) // 2)
+        pad_top = [""] * max(0, (term_rows - box_height) // 2)
 
-        # Header with plane icon and display info
-        scale_tag = f" @ {scale}x" + (" (auto)" if self._scale == "auto" else "")
-        title = f" ✈ FlightTracker TUI [{self._width}x{self._height}{scale_tag}] "
-
-        # Bottom status bar
-        scale_stat = f"{scale}x (auto)" if self._scale == "auto" else f"{scale}x"
-        status = f" Brightness: {self._brightness}% │ Scale: {scale_stat} [s] │ [Ctrl+C] Exit "
-        if len(status) > rendered_width and rendered_width >= 40:
-            status = f" Bri: {self._brightness}% │ Scale: {scale}x [s] │ ^C Exit "
-
-        inner_width = max(rendered_width, len(title), len(status))
-        box_width = inner_width + 4  # "│ " + content + " │"
-        box_height = char_rows + 4  # top border, header, content, bottom border
-
-        if self._show_border and term_cols >= box_width and term_rows >= box_height:
-            pad_left_len = max(0, (term_cols - box_width) // 2)
-            pad_left = " " * pad_left_len
-            pad_top_len = max(0, (term_rows - box_height) // 2)
-            pad_top = "\n" * pad_top_len
-
-            dashes = max(0, inner_width - len(title))
-            top_border = f"{pad_left}\033[1;36m┌{title}{'─' * dashes}──┐\033[0m\n"
-
-            bottom_dashes = max(0, inner_width - len(status))
-            bottom_border = (
-                f"{pad_left}\033[1;36m└{status}{'─' * bottom_dashes}──┘\033[0m\n"
+        if bordered:
+            scale_tag = f"{scale:.2f}".rstrip("0").rstrip(".") + "x"
+            if self._scale == "auto":
+                scale_tag += " (auto)"
+            title = f" ✈ FlightTracker TUI [{self._width}x{self._height}] "
+            status = (
+                f" Brightness: {self._brightness}% │ Scale: {scale_tag} [s] │ ^C Exit "
             )
+            if len(status) > rendered_width:
+                status = f" Bri: {self._brightness}% │ {scale_tag} [s] │ ^C "
 
-            pad_content = " " * max(0, inner_width - rendered_width)
-            body_lines = [
-                f"{pad_left}\033[1;36m│\033[0m {row}{pad_content}\033[0m \033[1;36m│\033[0m\n"
+            def border_line(left: str, label: str, right: str) -> str:
+                label = label[:rendered_width]
+                return (
+                    f"{pad_left}\033[1;36m{left}{label}"
+                    f"{'─' * (rendered_width + 2 - len(label))}{right}\033[0m"
+                )
+
+            lines = [border_line("┌", title, "┐")]
+            lines.extend(
+                f"{pad_left}\033[1;36m│\033[0m {row} \033[1;36m│\033[0m"
                 for row in content_lines
-            ]
-
-            frame = pad_top + top_border + "".join(body_lines) + bottom_border
+            )
+            lines.append(border_line("└", status, "┘"))
         else:
-            # Fallback for small terminals or no-border mode
-            frame = "\n".join(content_lines) + "\n"
+            lines = [pad_left + row for row in content_lines]
 
-        return frame
+        # A trailing newline at the bottom of a full-height frame scrolls the TTY.
+        return "\n".join(pad_top + lines)
 
     def swap(self, canvas: TUICanvas) -> TUICanvas:
         """Push the canvas to the terminal (VSync / show)."""
-        term_cols, term_rows = shutil.get_terminal_size((80, 24))
+        term_cols, term_rows = self._terminal_size()
         scale = self.get_effective_scale(term_cols, term_rows)
 
-        frame_str = self.render_to_string(canvas)
+        frame_str = self.render_to_string(canvas, term_size=(term_cols, term_rows))
         self._last_rendered_str = frame_str
 
         if self._is_tty:

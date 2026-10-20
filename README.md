@@ -38,6 +38,11 @@ python3 flight-tracker.py
 
 ## Terminal Controls
 
+The default `auto` scale resamples the display to the largest size that fits your
+terminal and updates as you resize it. It preserves the canvas aspect ratio, so
+wide or tall windows may have centered margins. Press `0` or launch with
+`--scale auto` to enable it; keys `1`–`5` select fixed integer scales.
+
 | Key | Action |
 |-----|--------|
 | `Ctrl+C` or `Q` | Exit application cleanly |
